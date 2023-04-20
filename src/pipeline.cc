@@ -768,7 +768,7 @@ class PipelineWorker : public Napi::AsyncWorker {
       }
 
       // Apply output ICC profile
-      if (!baton->withMetadataIcc.empty() && && baton->withMetadataIcc != "noop") {
+      if (!baton->withMetadataIcc.empty() && baton->withMetadataIcc != "noop") {
         image = image.icc_transform(
           const_cast<char*>(baton->withMetadataIcc.data()),
           VImage::option()
