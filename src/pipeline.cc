@@ -740,7 +740,9 @@ class PipelineWorker : public Napi::AsyncWorker {
         // Convert colourspace, pass the current known interpretation so libvips doesn't have to guess
         image = image.colourspace(baton->colourspace, VImage::option()->set("source_space", image.interpretation()));
         // Transform colours from embedded profile to output profile
-        if (baton->withMetadata && sharp::HasProfile(image) && baton->withMetadataIcc.empty() && baton->withMetadataIcc != "noop") {
+        if (baton->withMetadata && sharp::HasProfile(image) &&
+          baton->withMetadataIcc.empty() &&
+          baton->withMetadataIcc != "noop") {
           image = image.icc_transform("srgb", VImage::option()
             ->set("embedded", TRUE)
             ->set("intent", VIPS_INTENT_PERCEPTUAL));
