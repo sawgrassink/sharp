@@ -266,6 +266,27 @@ describe('Image metadata', function () {
       })
   );
 
+  it('Does not apply icc if noop', function (done) {
+    const output = fixtures.path('output.icc-noop.jpg');
+    sharp(fixtures.inputJpg).metadata(function (err, inmeta) {
+      if (err) throw err;
+      sharp(fixtures.inputJpg)
+        .withMetadata({ icc: 'noop' })
+        .toFile(output, function (err) {
+          if (err) throw err;
+          sharp(output).metadata(function (err, metadata) {
+            if (err) throw err;
+            assert.strictEqual(false, metadata.hasProfile);
+            assert.strictEqual(inmeta.space, metadata.space);
+            assert.strictEqual(3, metadata.channels);
+            // ICC
+            assert.strictEqual('undefined', typeof metadata.icc);
+            fixtures.assertSimilar(output, fixtures.inputJpg, { threshold: 1 }, done);
+          });
+        });
+    });
+  });
+
   it('GIF', function (done) {
     sharp(fixtures.inputGif).metadata(function (err, metadata) {
       if (err) throw err;
