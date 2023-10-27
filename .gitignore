@@ -8,7 +8,6 @@ test/saliency/report.json
 test/saliency/Image*
 test/saliency/[Uu]serData*
 !test/saliency/userData.js
-vendor
 .gitattributes
 .DS_Store
 .nyc_output
