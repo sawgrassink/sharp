@@ -2,7 +2,8 @@
   'variables': {
     'vips_version': '<!(node -p "require(\'./lib/libvips\').minimumLibvipsVersion")',
     'platform_and_arch': '<!(node -p "require(\'./lib/platform\')()")',
-    'sharp_vendor_dir': './vendor/<(vips_version)/<(platform_and_arch)'
+    'platform': '<!(node -p "require(\'./lib/platform\')().split(\'-\')[0]")',
+    'sharp_vendor_dir': './vendor/<(vips_version)/<(platform)'
   },
   'targets': [{
     'target_name': 'libvips-cpp',
@@ -68,7 +69,7 @@
       }]
     ]
   }, {
-    'target_name': 'sharp-<(platform_and_arch)',
+    'target_name': 'sharp-<(platform)',
     'defines': [
       'NAPI_VERSION=7'
     ],
@@ -147,9 +148,15 @@
               ]
             },
             'xcode_settings': {
+                'OTHER_CFLAGS': [
+                    '-arch x86_64',
+                    '-arch arm64'
+                ],
               'OTHER_LDFLAGS': [
                 # Ensure runtime linking is relative to sharp.node
-                '-Wl,-rpath,\'@loader_path/../../<(sharp_vendor_dir)/lib\''
+                '-Wl,-rpath,\'@loader_path/../../<(sharp_vendor_dir)/lib\'',
+                '-arch x86_64',
+                '-arch arm64'
               ]
             }
           }],
@@ -185,7 +192,9 @@
       'OTHER_CPLUSPLUSFLAGS': [
         '-fexceptions',
         '-Wall',
-        '-Oz'
+        '-Oz',
+        '-arch x86_64',
+        '-arch arm64'
       ]
     },
     'configurations': {
