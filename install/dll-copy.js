@@ -12,6 +12,7 @@ const platform = require('../lib/platform');
 const minimumLibvipsVersion = libvips.minimumLibvipsVersion;
 
 const platformAndArch = platform();
+const platform = platformAndArch.split('-')[0];
 
 if (platformAndArch.startsWith('win32')) {
   const buildReleaseDir = path.join(__dirname, '..', 'build', 'Release');
@@ -19,7 +20,7 @@ if (platformAndArch.startsWith('win32')) {
   try {
     libvips.mkdirSync(buildReleaseDir);
   } catch (err) {}
-  const vendorLibDir = path.join(__dirname, '..', 'vendor', minimumLibvipsVersion, platformAndArch, 'lib');
+  const vendorLibDir = path.join(__dirname, '..', 'vendor', minimumLibvipsVersion, platform, 'lib');
   libvips.log(`Copying DLLs from ${vendorLibDir} to ${buildReleaseDir}`);
   try {
     fs
