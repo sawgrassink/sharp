@@ -82,7 +82,7 @@
       'conditions': [
         ['OS != "win"', {
           'pkg_config_path': '<!(node -p "require(\'./lib/libvips\').pkgConfigPath()")',
-          'use_global_libvips': '<!(node -p "Boolean(require(\'./lib/libvips\').useGlobalLibvips()).toString()")'
+          'use_global_libvips': 'false'
         }, {
           'pkg_config_path': '',
           'use_global_libvips': ''
