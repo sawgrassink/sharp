@@ -25,6 +25,13 @@ describe('JP2 output', () => {
         /JP2 output requires libvips with support for OpenJPEG/
       )
     );
+
+    it('File with JP2-like suffix should not fail due to missing OpenJPEG', () => {
+      const output = fixtures.path('output.failj2c');
+      return assert.doesNotReject(
+        async () => sharp(fixtures.inputPngWithOneColor).toFile(output)
+      );
+    });
   } else {
     it('JP2 Buffer to PNG Buffer', () => {
       sharp(fs.readFileSync(fixtures.inputJp2))
@@ -86,10 +93,38 @@ describe('JP2 output', () => {
         });
     });
 
-    it('Invalid JP2 chromaSubsampling value throws error', function () {
-      assert.throws(function () {
-        sharp().jpeg({ chromaSubsampling: '4:2:2' });
+    it('can use the jp2Oneshot option to handle multi-part tiled JPEG 2000 file', async () => {
+      const outputJpg = fixtures.path('output.jpg');
+      await assert.rejects(
+        () => sharp(fixtures.inputJp2TileParts).toFile(outputJpg)
+      );
+      await assert.doesNotReject(async () => {
+        await sharp(fixtures.inputJp2TileParts, { jp2Oneshot: true }).toFile(outputJpg);
+        const { format, width, height } = await sharp(outputJpg).metadata();
+        assert.strictEqual(format, 'jpeg');
+        assert.strictEqual(width, 320);
+        assert.strictEqual(height, 240);
       });
     });
+
+    it('Invalid JP2 chromaSubsampling value throws error', () => {
+      assert.throws(
+        () => sharp().jp2({ chromaSubsampling: '4:2:2' }),
+        /Expected one of 4:2:0, 4:4:4 but received 4:2:2 of type string/
+      );
+    });
   }
+
+  it('valid JP2 oneshot value does not throw error', () => {
+    assert.doesNotThrow(
+      () => sharp({ jp2: { oneshot: true } })
+    );
+  });
+
+  it('invalid JP2 oneshot value throws error', () => {
+    assert.throws(
+      () => sharp({ jp2: { oneshot: 'fail' } }),
+      /Expected boolean for jp2.oneshot but received fail of type string/
+    );
+  });
 });

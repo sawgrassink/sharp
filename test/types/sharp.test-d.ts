@@ -44,6 +44,12 @@ sharp('input.png')
     // sharpened, with metadata, 90% quality WebP image data. Phew!
   });
 
+sharp('input.png')
+  .keepMetadata()
+  .toFile('output.png', (err, info) => {
+    // output.png is an image containing input.png along with all metadata(EXIF, ICC, XMP, IPTC) from input.png
+  })
+
 sharp('input.jpg')
   .resize(300, 200)
   .toFile('output.jpg', (err: Error) => {
@@ -52,6 +58,12 @@ sharp('input.jpg')
   });
 
 sharp('input.jpg').resize({ width: 300 }).blur(false).blur(true).toFile('output.jpg');
+
+sharp().blur();
+sharp().blur(1);
+sharp().blur({ sigma: 1 });
+sharp().blur({ sigma: 1, precision: 'approximate' });
+sharp().blur({ sigma: 1, minAmplitude: 0.8 });
 
 sharp({
   create: {
@@ -73,8 +85,6 @@ readableStream.pipe(transformer).pipe(writableStream);
 
 console.log(sharp.format);
 console.log(sharp.versions);
-console.log(sharp.vendor.current);
-console.log(sharp.vendor.installed.join(', '));
 
 sharp.queue.on('change', (queueLength: number) => {
   console.log(`Queue contains ${queueLength} task(s)`);
@@ -177,6 +187,8 @@ sharp(input)
     // containing a lanczos2/nohalo scaled version, embedded on a white canvas,
     // of the image data in inputBuffer
   });
+
+sharp(input).resize({ kernel: 'mks2013' });
 
 transformer = sharp()
   .resize(200, 200, {
@@ -291,6 +303,13 @@ sharp('input.gif')
     [0.2392, 0.4696, 0.0912],
   ])
 
+  .recomb([
+    [1,0,0,0],
+    [0,1,0,0],
+    [0,0,1,0],
+    [0,0,0,1],
+  ])
+
   .modulate({ brightness: 2 })
   .modulate({ hue: 180 })
   .modulate({ lightness: 10 })
@@ -356,6 +375,8 @@ sharp(input)
   .gif({ reuse: false })
   .gif({ progressive: true })
   .gif({ progressive: false })
+  .gif({ keepDuplicateFrames: true })
+  .gif({ keepDuplicateFrames: false })
   .toBuffer({ resolveWithObject: true })
   .then(({ data, info }) => {
     console.log(data);
@@ -397,6 +418,7 @@ sharp({
     channels: 4,
     height: 25000,
     width: 25000,
+    pageHeight: 1000,
   },
   limitInputPixels: false,
 })
@@ -406,16 +428,13 @@ sharp({
 
 // Taken from API documentation at
 // https://sharp.pixelplumbing.com/api-operation#clahe
-// introducted
+// introduced
 sharp('input.jpg').clahe({ width: 10, height: 10 }).toFile('output.jpg');
 
 sharp('input.jpg').clahe({ width: 10, height: 10, maxSlope: 5 }).toFile('outfile.jpg');
 
 // Support `unlimited` input option
 sharp('input.png', { unlimited: true }).resize(320, 240).toFile('outfile.png');
-
-// Support `subifd` input option for tiffs
-sharp('input.tiff', { subifd: 3 }).resize(320, 240).toFile('outfile.png');
 
 // Support creating with noise
 sharp({
@@ -524,7 +543,7 @@ sharp('input.tiff').jxl({ lossless: true }).toFile('out.jxl');
 sharp('input.tiff').jxl({ effort: 7 }).toFile('out.jxl');
 
 // Support `minSize` and `mixed` webp options
-sharp('input.tiff').webp({ minSize: 1000, mixed: true }).toFile('out.gif');
+sharp('input.tiff').webp({ minSize: true, mixed: true }).toFile('out.gif');
 
 // 'failOn' input param
 sharp('input.tiff', { failOn: 'none' });
@@ -574,8 +593,8 @@ const nohalo: string = sharp.interpolators.nohalo;
 const vertexSplitQuadraticBasisSpline: string = sharp.interpolators.vertexSplitQuadraticBasisSpline;
 
 // Triming
-sharp(input).trim('#000').toBuffer();
-sharp(input).trim(10).toBuffer();
+sharp(input).trim({ background: '#000' }).toBuffer();
+sharp(input).trim({ threshold: 10, lineArt: true }).toBuffer();
 sharp(input).trim({ background: '#bf1942', threshold: 30 }).toBuffer();
 
 // Text input
@@ -591,7 +610,7 @@ sharp({
     rgba: true,
     justify: true,
     spacing: 10,
-    wrap: 'charWord',
+    wrap: 'word-char',
   },
 })
   .png()
@@ -637,3 +656,115 @@ sharp('input.png').composite([
 sharp('input.png').tile({
   basename: 'output.dz.tiles',
 });
+
+// https://github.com/lovell/sharp/issues/3669
+sharp(input).composite([
+  {
+    raw: {
+      width: 1,
+      height: 1,
+      channels: 1,
+      premultiplied: false,
+    },
+    sequentialRead: false,
+    unlimited: true,
+  }
+]);
+
+// Support for webp preset in types
+// https://github.com/lovell/sharp/issues/3747
+sharp('input.tiff').webp({ preset: 'photo' }).toFile('out.webp');
+sharp('input.tiff').webp({ preset: 'picture' }).toFile('out.webp');
+sharp('input.tiff').webp({ preset: 'icon' }).toFile('out.webp');
+sharp('input.tiff').webp({ preset: 'drawing' }).toFile('out.webp');
+sharp('input.tiff').webp({ preset: 'text' }).toFile('out.webp');
+sharp('input.tiff').webp({ preset: 'default' }).toFile('out.webp');
+
+sharp(input)
+  .keepExif()
+  .withExif({
+    IFD0: {
+      k1: 'v1'
+    }
+  })
+  .withExifMerge({
+    IFD1: {
+      k2: 'v2'
+    }
+  })
+  .keepXmp()
+  .withXmp('test')
+  .keepIccProfile()
+  .withIccProfile('filename')
+  .withIccProfile('filename', { attach: false, intent: 0 });
+
+// Added missing types for OverlayOptions
+// https://github.com/lovell/sharp/pull/4048
+sharp(input).composite([
+  {
+    input: 'image.gif', 
+    animated: true, 
+    limitInputPixels: 536805378, 
+    density: 144, 
+    failOn: "warning",
+    autoOrient: true
+  }
+])
+sharp(input).composite([
+  {
+    input: 'image.png',  
+    animated: false,
+    limitInputPixels: 178935126, 
+    density: 72, 
+    failOn: "truncated"
+  }
+])
+
+// Support format-specific input options
+const colour: sharp.Colour = '#fff';
+const color: sharp.Color = '#fff';
+sharp({ pdf: { background: colour } });
+sharp({ pdf: { background: color } });
+sharp({ pdfBackground: colour }); // Deprecated
+sharp({ pdfBackground: color }); // Deprecated
+sharp({ tiff: { subifd: 3 } });
+sharp({ subifd: 3 }); // Deprecated
+sharp({ openSlide: { level: 0 } });
+sharp({ level: 0 }); // Deprecated
+sharp({ jp2: { oneshot: true } });
+sharp({ jp2: { oneshot: false } });
+sharp({ svg: { stylesheet: 'test' }});
+sharp({ svg: { highBitdepth: true }});
+sharp({ svg: { highBitdepth: false }});
+
+// Raw input options
+const raw: sharp.Raw = { width: 1, height: 1, channels: 3 };
+sharp({ raw });
+sharp({ raw: { ...raw, premultiplied: true } });
+sharp({ raw: { ...raw, premultiplied: false } });
+sharp({ raw: { ...raw, pageHeight: 1 } });
+
+sharp({ autoOrient: true });
+sharp({ autoOrient: false });
+sharp().autoOrient();
+
+sharp([input, input]);
+sharp([input, input], {
+  join: {
+    animated: true
+  }
+});
+sharp([input, input], {
+  join: {
+    across: 2,
+    shim: 5,
+    background: colour,
+    halign: 'centre',
+    valign: 'bottom'
+  }
+});
+
+sharp().erode();
+sharp().erode(1);
+sharp().dilate();
+sharp().dilate(1);

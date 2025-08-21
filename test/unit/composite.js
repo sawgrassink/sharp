@@ -122,6 +122,26 @@ describe('composite', () => {
       });
   });
 
+  it('scrgb pipeline', () => {
+    const filename = 'composite-red-scrgb.png';
+    const actual = fixtures.path(`output.${filename}`);
+    const expected = fixtures.expected(filename);
+    return sharp({
+      create: {
+        width: 32, height: 32, channels: 4, background: red
+      }
+    })
+      .pipelineColourspace('scrgb')
+      .composite([{
+        input: fixtures.inputPngWithTransparency16bit,
+        blend: 'color-burn'
+      }])
+      .toFile(actual)
+      .then(() => {
+        fixtures.assertMaxColourDistance(actual, expected);
+      });
+  });
+
   it('multiple', async () => {
     const filename = 'composite-multiple.png';
     const actual = fixtures.path(`output.${filename}`);
@@ -136,6 +156,22 @@ describe('composite', () => {
       }])
       .toFile(actual);
     fixtures.assertMaxColourDistance(actual, expected);
+  });
+
+  it('autoOrient', async () => {
+    const data = await sharp({
+      create: {
+        width: 600, height: 600, channels: 4, background: { ...red, alpha: 1 }
+      }
+    })
+      .composite([{
+        input: fixtures.inputJpgWithExif,
+        autoOrient: true
+      }])
+      .jpeg()
+      .toBuffer();
+
+    await fixtures.assertSimilar(fixtures.expected('composite-autoOrient.jpg'), data);
   });
 
   it('zero offset', done => {
@@ -246,7 +282,7 @@ describe('composite', () => {
     sharp(fixtures.inputJpg)
       .resize(300, 300)
       .composite([{
-        input: Buffer.from('<svg width="200" height="200"><rect x="0" y="0" width="200" height="200" rx="50" ry="50"/></svg>'),
+        input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect x="0" y="0" width="200" height="200" rx="50" ry="50"/></svg>'),
         density: 96,
         blend: 'dest-in',
         cutout: true
@@ -269,7 +305,7 @@ describe('composite', () => {
           .resize(80)
           .composite([{
             input: fixtures.inputPngWithTransparency16bit,
-            gravity: gravity
+            gravity
           }])
           .toBuffer((err, data, info) => {
             if (err) throw err;
@@ -314,7 +350,7 @@ describe('composite', () => {
           .composite([{
             input: fixtures.inputPngWithTransparency16bit,
             tile: true,
-            gravity: gravity
+            gravity
           }])
           .toBuffer((err, data, info) => {
             if (err) throw err;
@@ -451,7 +487,7 @@ describe('composite', () => {
     assert.strictEqual(info.height, 40);
   });
 
-  it('Ensure implict unpremultiply after resize but before composite', async () => {
+  it('Ensure implicit unpremultiply after resize but before composite', async () => {
     const [r, g, b, a] = await sharp({
       create: {
         width: 1, height: 1, channels: 4, background: 'saddlebrown'
@@ -471,5 +507,29 @@ describe('composite', () => {
     assert.strictEqual(g, 69);
     assert.strictEqual(b, 19);
     assert.strictEqual(a, 128);
+  });
+
+  it('Ensure tiled overlay is fully decoded', async () => {
+    const tile = await sharp({
+      create: {
+        width: 8, height: 513, channels: 3, background: 'red'
+      }
+    })
+      .png({ compressionLevel: 0 })
+      .toBuffer();
+
+    const { info } = await sharp({
+      create: {
+        width: 8, height: 514, channels: 3, background: 'green'
+      }
+    })
+      .composite([{
+        input: tile,
+        tile: true
+      }])
+      .toBuffer({ resolveWithObject: true });
+
+    assert.strictEqual(info.width, 8);
+    assert.strictEqual(info.height, 514);
   });
 });

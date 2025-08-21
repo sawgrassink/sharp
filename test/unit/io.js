@@ -459,27 +459,29 @@ describe('Input/output', function () {
     });
   });
 
-  it('Fail when input is invalid Buffer', function (done) {
-    sharp(Buffer.from([0x1, 0x2, 0x3, 0x4])).toBuffer().then(function () {
-      assert(false);
-      done();
-    }).catch(function (err) {
-      assert(err instanceof Error);
-      assert.strictEqual('Input buffer contains unsupported image format', err.message);
-      done();
-    });
-  });
+  it('Fail when input is invalid Buffer', async () =>
+    assert.rejects(
+      () => sharp(Buffer.from([0x1, 0x2, 0x3, 0x4])).toBuffer(),
+      (err) => {
+        assert.strictEqual(err.message, 'Input buffer contains unsupported image format');
+        assert(err.stack.includes('at Sharp.toBuffer'));
+        assert(err.stack.includes(__filename));
+        return true;
+      }
+    )
+  );
 
-  it('Fail when input file path is missing', function (done) {
-    sharp('does-not-exist').toBuffer().then(function () {
-      assert(false);
-      done();
-    }).catch(function (err) {
-      assert(err instanceof Error);
-      assert.strictEqual('Input file is missing: does-not-exist', err.message);
-      done();
-    });
-  });
+  it('Fail when input file path is missing', async () =>
+    assert.rejects(
+      () => sharp('does-not-exist').toFile('fail'),
+      (err) => {
+        assert.strictEqual(err.message, 'Input file is missing: does-not-exist');
+        assert(err.stack.includes('at Sharp.toFile'));
+        assert(err.stack.includes(__filename));
+        return true;
+      }
+    )
+  );
 
   describe('Fail for unsupported input', function () {
     it('Undefined', function () {
@@ -865,31 +867,91 @@ describe('Input/output', function () {
         sharp({ pages: '1' });
       }, /Expected integer between -1 and 100000 for pages but received 1 of type string/);
     });
-    it('Valid level property', function () {
+    it('Valid openSlide.level property', function () {
+      sharp({ openSlide: { level: 1 } });
       sharp({ level: 1 });
     });
-    it('Invalid level property (string) throws', function () {
-      assert.throws(function () {
-        sharp({ level: '1' });
-      }, /Expected integer between 0 and 256 for level but received 1 of type string/);
+    it('Invalid openSlide.level property (string) throws', function () {
+      assert.throws(
+        () => sharp({ openSlide: { level: '1' } }),
+        /Expected integer between 0 and 256 for openSlide.level but received 1 of type string/
+      );
+      assert.throws(
+        () => sharp({ level: '1' }),
+        /Expected integer between 0 and 256 for level but received 1 of type string/
+      );
     });
-    it('Invalid level property (negative) throws', function () {
-      assert.throws(function () {
-        sharp({ level: -1 });
-      }, /Expected integer between 0 and 256 for level but received -1 of type number/);
+    it('Invalid openSlide.level property (negative) throws', function () {
+      assert.throws(
+        () => sharp({ openSlide: { level: -1 } }),
+        /Expected integer between 0 and 256 for openSlide\.level but received -1 of type number/
+      );
+      assert.throws(
+        () => sharp({ level: -1 }),
+        /Expected integer between 0 and 256 for level but received -1 of type number/
+      );
     });
-    it('Valid subifd property', function () {
+    it('Valid tiff.subifd property', function () {
+      sharp({ tiff: { subifd: 1 } });
       sharp({ subifd: 1 });
     });
-    it('Invalid subifd property (string) throws', function () {
-      assert.throws(function () {
-        sharp({ subifd: '1' });
-      }, /Expected integer between -1 and 100000 for subifd but received 1 of type string/);
+    it('Invalid tiff.subifd property (string) throws', function () {
+      assert.throws(
+        () => sharp({ tiff: { subifd: '1' } }),
+        /Expected integer between -1 and 100000 for tiff\.subifd but received 1 of type string/
+      );
+      assert.throws(
+        () => sharp({ subifd: '1' }),
+        /Expected integer between -1 and 100000 for subifd but received 1 of type string/
+      );
     });
-    it('Invalid subifd property (float) throws', function () {
-      assert.throws(function () {
-        sharp({ subifd: 1.2 });
-      }, /Expected integer between -1 and 100000 for subifd but received 1.2 of type number/);
+    it('Invalid tiff.subifd property (float) throws', function () {
+      assert.throws(
+        () => sharp({ tiff: { subifd: 1.2 } }),
+        /Expected integer between -1 and 100000 for tiff\.subifd but received 1.2 of type number/
+      );
+      assert.throws(
+        () => sharp({ subifd: 1.2 }),
+        /Expected integer between -1 and 100000 for subifd but received 1.2 of type number/
+      );
+    });
+    it('Valid pdf.background property (string)', function () {
+      sharp({ pdf: { background: '#00ff00' } });
+      sharp({ pdfBackground: '#00ff00' });
+    });
+    it('Valid pdf.background property (object)', function () {
+      sharp({ pdf: { background: { r: 0, g: 255, b: 0 } } });
+      sharp({ pdfBackground: { r: 0, g: 255, b: 0 } });
+    });
+    it('Invalid pdf.background property (string) throws', function () {
+      assert.throws(
+        () => sharp({ pdf: { background: '00ff00' } }),
+        /Unable to parse color from string/
+      );
+      assert.throws(
+        () => sharp({ pdfBackground: '00ff00' }),
+        /Unable to parse color from string/
+      );
+    });
+    it('Invalid pdf.background property (number) throws', function () {
+      assert.throws(
+        () => sharp({ pdf: { background: 255 } }),
+        /Expected object or string for background/
+      );
+      assert.throws(
+        () => sharp({ pdf: { background: 255 } }),
+        /Expected object or string for background/
+      );
+    });
+    it('Invalid pdf.background property (object)', function () {
+      assert.throws(
+        () => sharp({ pdf: { background: { red: 0, green: 255, blue: 0 } } }),
+        /Unable to parse color from object/
+      );
+      assert.throws(
+        () => sharp({ pdfBackground: { red: 0, green: 255, blue: 0 } }),
+        /Unable to parse color from object/
+      );
     });
   });
 
@@ -914,7 +976,7 @@ describe('Input/output', function () {
         channels: 3,
         background: { r: 0, g: 255, b: 0 }
       };
-      sharp({ create: create })
+      sharp({ create })
         .jpeg()
         .toBuffer(function (err, data, info) {
           if (err) throw err;
@@ -932,7 +994,7 @@ describe('Input/output', function () {
         channels: 4,
         background: { r: 255, g: 0, b: 0, alpha: 128 }
       };
-      sharp({ create: create })
+      sharp({ create })
         .png()
         .toBuffer(function (err, data, info) {
           if (err) throw err;
@@ -951,7 +1013,7 @@ describe('Input/output', function () {
         background: { r: 0, g: 0, b: 0 }
       };
       assert.throws(function () {
-        sharp({ create: create });
+        sharp({ create });
       });
     });
     it('Missing background', function () {
@@ -961,7 +1023,7 @@ describe('Input/output', function () {
         channels: 3
       };
       assert.throws(function () {
-        sharp({ create: create });
+        sharp({ create });
       });
     });
   });
@@ -1012,5 +1074,22 @@ describe('Input/output', function () {
         readable.pipe(inPipeline).pipe(goodPipeline);
       });
     readable.pipe(inPipeline).pipe(badPipeline);
+  });
+
+  it('supports wide-character filenames', async () => {
+    const filename = fixtures.path('output.图片.jpg');
+    const create = {
+      width: 8,
+      height: 8,
+      channels: 3,
+      background: 'green'
+    };
+    await sharp({ create }).toFile(filename);
+
+    const { width, height, channels, format } = await sharp(filename).metadata();
+    assert.strictEqual(width, 8);
+    assert.strictEqual(height, 8);
+    assert.strictEqual(channels, 3);
+    assert.strictEqual(format, 'jpeg');
   });
 });

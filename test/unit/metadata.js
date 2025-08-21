@@ -11,6 +11,8 @@ const icc = require('icc');
 const sharp = require('../../');
 const fixtures = require('../fixtures');
 
+const create = { width: 1, height: 1, channels: 3, background: 'red' };
+
 describe('Image metadata', function () {
   it('JPEG', function (done) {
     sharp(fixtures.inputJpg).metadata(function (err, metadata) {
@@ -55,8 +57,8 @@ describe('Image metadata', function () {
       assert.strictEqual(true, metadata.exif instanceof Buffer);
       const exif = exifReader(metadata.exif);
       assert.strictEqual('object', typeof exif);
-      assert.strictEqual('object', typeof exif.image);
-      assert.strictEqual('number', typeof exif.image.XResolution);
+      assert.strictEqual('object', typeof exif.Image);
+      assert.strictEqual('number', typeof exif.Image.XResolution);
       // ICC
       assert.strictEqual('object', typeof metadata.icc);
       assert.strictEqual(true, metadata.icc instanceof Buffer);
@@ -80,6 +82,7 @@ describe('Image metadata', function () {
       assert.strictEqual(true, metadata.xmp instanceof Buffer);
       assert.strictEqual(12466, metadata.xmp.byteLength);
       assert.strictEqual(metadata.xmp.indexOf(Buffer.from('<?xpacket begin="')), 0);
+      assert(metadata.xmpAsString.startsWith('<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>'));
       done();
     });
   });
@@ -100,8 +103,12 @@ describe('Image metadata', function () {
       assert.strictEqual(false, metadata.hasProfile);
       assert.strictEqual(false, metadata.hasAlpha);
       assert.strictEqual(1, metadata.orientation);
+      assert.strictEqual(2464, metadata.autoOrient.width);
+      assert.strictEqual(3248, metadata.autoOrient.height);
       assert.strictEqual('undefined', typeof metadata.exif);
       assert.strictEqual('undefined', typeof metadata.icc);
+      assert.strictEqual('undefined', typeof metadata.xmp);
+      assert.strictEqual('undefined', typeof metadata.xmpAsString);
       assert.strictEqual('inch', metadata.resolutionUnit);
       done();
     });
@@ -146,8 +153,35 @@ describe('Image metadata', function () {
       assert.strictEqual(false, metadata.hasProfile);
       assert.strictEqual(false, metadata.hasAlpha);
       assert.strictEqual('undefined', typeof metadata.orientation);
+      assert.strictEqual(2809, metadata.autoOrient.width);
+      assert.strictEqual(2074, metadata.autoOrient.height);
       assert.strictEqual('undefined', typeof metadata.exif);
       assert.strictEqual('undefined', typeof metadata.icc);
+      done();
+    });
+  });
+
+  it('PNG with comment', function (done) {
+    sharp(fixtures.inputPngTestJoinChannel).metadata(function (err, metadata) {
+      if (err) throw err;
+      assert.strictEqual('png', metadata.format);
+      assert.strictEqual('undefined', typeof metadata.size);
+      assert.strictEqual(320, metadata.width);
+      assert.strictEqual(240, metadata.height);
+      assert.strictEqual('b-w', metadata.space);
+      assert.strictEqual(1, metadata.channels);
+      assert.strictEqual('uchar', metadata.depth);
+      assert.strictEqual(72, metadata.density);
+      assert.strictEqual('undefined', typeof metadata.chromaSubsampling);
+      assert.strictEqual(false, metadata.isProgressive);
+      assert.strictEqual(false, metadata.hasProfile);
+      assert.strictEqual(false, metadata.hasAlpha);
+      assert.strictEqual('undefined', typeof metadata.orientation);
+      assert.strictEqual('undefined', typeof metadata.exif);
+      assert.strictEqual('undefined', typeof metadata.icc);
+      assert.strictEqual(1, metadata.comments.length);
+      assert.strictEqual('Comment', metadata.comments[0].keyword);
+      assert.strictEqual('Created with GIMP', metadata.comments[0].text);
       done();
     });
   });
@@ -171,6 +205,56 @@ describe('Image metadata', function () {
       assert.strictEqual('undefined', typeof metadata.exif);
       assert.strictEqual('undefined', typeof metadata.icc);
       done();
+    });
+  });
+
+  it('PNG with greyscale bKGD chunk - 8 bit', async () => {
+    const data = await sharp(fixtures.inputPng8BitGreyBackground).metadata();
+    assert.deepStrictEqual(data, {
+      background: {
+        gray: 0
+      },
+      bitsPerSample: 8,
+      channels: 2,
+      density: 72,
+      depth: 'uchar',
+      format: 'png',
+      hasAlpha: true,
+      hasProfile: false,
+      height: 32,
+      isPalette: false,
+      isProgressive: false,
+      space: 'b-w',
+      width: 32,
+      autoOrient: {
+        width: 32,
+        height: 32
+      }
+    });
+  });
+
+  it('PNG with greyscale bKGD chunk - 16 bit', async () => {
+    const data = await sharp(fixtures.inputPng16BitGreyBackground).metadata();
+    assert.deepStrictEqual(data, {
+      background: {
+        gray: 67
+      },
+      bitsPerSample: 16,
+      channels: 2,
+      density: 72,
+      depth: 'ushort',
+      format: 'png',
+      hasAlpha: true,
+      hasProfile: false,
+      height: 32,
+      isPalette: false,
+      isProgressive: false,
+      space: 'grey16',
+      width: 32,
+      autoOrient: {
+        width: 32,
+        height: 32
+      }
     });
   });
 
@@ -395,13 +479,27 @@ describe('Image metadata', function () {
     });
   });
 
-  it('Non-existent file in, Promise out', function (done) {
-    sharp('fail').metadata().then(function (metadata) {
-      throw new Error('Non-existent file');
-    }, function (err) {
-      assert.ok(!!err);
-      done();
-    });
+  it('Non-existent file in, Promise out', async () =>
+    assert.rejects(
+      () => sharp('fail').metadata(),
+      (err) => {
+        assert.strictEqual(err.message, 'Input file is missing: fail');
+        assert(err.stack.includes('at Sharp.metadata'));
+        assert(err.stack.includes(__filename));
+        return true;
+      }
+    )
+  );
+
+  it('Invalid stream in, callback out', (done) => {
+    fs.createReadStream(__filename).pipe(
+      sharp().metadata((err) => {
+        assert.strictEqual(err.message, 'Input buffer contains unsupported image format');
+        assert(err.stack.includes('at Sharp.metadata'));
+        assert(err.stack.includes(__filename));
+        done();
+      })
+    );
   });
 
   it('Stream in, Promise out', function (done) {
@@ -518,13 +616,17 @@ describe('Image metadata', function () {
           if (err) throw err;
           assert.strictEqual(true, metadata.hasProfile);
           assert.strictEqual(8, metadata.orientation);
+          assert.strictEqual(320, metadata.width);
+          assert.strictEqual(240, metadata.height);
+          assert.strictEqual(240, metadata.autoOrient.width);
+          assert.strictEqual(320, metadata.autoOrient.height);
           assert.strictEqual('object', typeof metadata.exif);
           assert.strictEqual(true, metadata.exif instanceof Buffer);
           // EXIF
           const exif = exifReader(metadata.exif);
           assert.strictEqual('object', typeof exif);
-          assert.strictEqual('object', typeof exif.image);
-          assert.strictEqual('number', typeof exif.image.XResolution);
+          assert.strictEqual('object', typeof exif.Image);
+          assert.strictEqual('number', typeof exif.Image.XResolution);
           // ICC
           assert.strictEqual('object', typeof metadata.icc);
           assert.strictEqual(true, metadata.icc instanceof Buffer);
@@ -538,11 +640,97 @@ describe('Image metadata', function () {
       });
   });
 
+  it('keep existing ICC profile', async () => {
+    const data = await sharp(fixtures.inputJpgWithExif)
+      .keepIccProfile()
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    const { description } = icc.parse(metadata.icc);
+    assert.strictEqual(description, 'Generic RGB Profile');
+  });
+
+  it('keep existing ICC profile, ignore colourspace conversion', async () => {
+    const data = await sharp(fixtures.inputJpgWithExif)
+      .keepIccProfile()
+      .toColourspace('cmyk')
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(metadata.channels, 3);
+    const { description } = icc.parse(metadata.icc);
+    assert.strictEqual(description, 'Generic RGB Profile');
+  });
+
+  it('keep existing ICC profile, avoid colour transform', async () => {
+    const [r, g, b] = await sharp(fixtures.inputPngWithProPhotoProfile)
+      .keepIccProfile()
+      .raw()
+      .toBuffer();
+
+    assert.strictEqual(r, 131);
+    assert.strictEqual(g, 141);
+    assert.strictEqual(b, 192);
+  });
+
+  it('keep existing CMYK ICC profile', async () => {
+    const data = await sharp(fixtures.inputJpgWithCmykProfile)
+      .pipelineColourspace('cmyk')
+      .toColourspace('cmyk')
+      .keepIccProfile()
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(metadata.channels, 4);
+    const { description } = icc.parse(metadata.icc);
+    assert.strictEqual(description, 'U.S. Web Coated (SWOP) v2');
+  });
+
+  it('transform to ICC profile and attach', async () => {
+    const data = await sharp({ create })
+      .png()
+      .withIccProfile('p3', { attach: true })
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    const { description } = icc.parse(metadata.icc);
+    assert.strictEqual(description, 'sP3C');
+  });
+
+  it('transform to ICC profile but do not attach', async () => {
+    const data = await sharp({ create })
+      .png()
+      .withIccProfile('p3', { attach: false })
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(3, metadata.channels);
+    assert.strictEqual(undefined, metadata.icc);
+  });
+
+  it('transform to invalid ICC profile emits warning', async () => {
+    const img = sharp({ create })
+      .png()
+      .withIccProfile(fixtures.path('invalid-illuminant.icc'));
+
+    const warningsEmitted = [];
+    img.on('warning', (warning) => {
+      warningsEmitted.push(warning);
+    });
+
+    const data = await img.toBuffer();
+    assert.strict(warningsEmitted.includes('Invalid profile'));
+
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(3, metadata.channels);
+    assert.strictEqual(undefined, metadata.icc);
+  });
+
   it('Apply CMYK output ICC profile', function (done) {
     const output = fixtures.path('output.icc-cmyk.jpg');
     sharp(fixtures.inputJpg)
       .resize(64)
-      .withMetadata({ icc: 'cmyk' })
+      .withIccProfile('cmyk')
       .toFile(output, function (err) {
         if (err) throw err;
         sharp(output).metadata(function (err, metadata) {
@@ -562,31 +750,12 @@ describe('Image metadata', function () {
         fixtures.assertSimilar(output, fixtures.expected('icc-cmyk.jpg'), { threshold: 1 }, done);
       });
   });
-  it('Does not apply icc if noop', function (done) {
-    const output = fixtures.path('output.icc-noop.jpg');
-    sharp(fixtures.inputJpg).metadata(function (err, inmeta) {
-      if (err) throw err;
-      sharp(fixtures.inputJpg)
-        .withMetadata({ icc: 'noop' })
-        .toFile(output, function (err) {
-          if (err) throw err;
-          sharp(output).metadata(function (err, metadata) {
-            if (err) throw err;
-            assert.strictEqual(false, metadata.hasProfile);
-            assert.strictEqual(inmeta.space, metadata.space);
-            assert.strictEqual(3, metadata.channels);
-            // ICC
-            assert.strictEqual('undefined', typeof metadata.icc);
-            fixtures.assertSimilar(output, fixtures.inputJpg, { threshold: 1 }, done);
-          });
-        });
-    });
-  });
+
   it('Apply custom output ICC profile', function (done) {
     const output = fixtures.path('output.hilutite.jpg');
     sharp(fixtures.inputJpg)
       .resize(64)
-      .withMetadata({ icc: fixtures.path('hilutite.icm') })
+      .withIccProfile(fixtures.path('hilutite.icm'))
       .toFile(output, function (err, info) {
         if (err) throw err;
         fixtures.assertMaxColourDistance(output, fixtures.expected('hilutite.jpg'), 9);
@@ -608,8 +777,8 @@ describe('Image metadata', function () {
           // EXIF
           const exif = exifReader(metadata.exif);
           assert.strictEqual('object', typeof exif);
-          assert.strictEqual('object', typeof exif.image);
-          assert.strictEqual('number', typeof exif.image.XResolution);
+          assert.strictEqual('object', typeof exif.Image);
+          assert.strictEqual('number', typeof exif.Image.XResolution);
           // ICC
           assert.strictEqual('object', typeof metadata.icc);
           assert.strictEqual(true, metadata.icc instanceof Buffer);
@@ -625,7 +794,6 @@ describe('Image metadata', function () {
   it('Remove EXIF metadata after a resize', function (done) {
     sharp(fixtures.inputJpgWithExif)
       .resize(320, 240)
-      .withMetadata(false)
       .toBuffer(function (err, buffer) {
         if (err) throw err;
         sharp(buffer).metadata(function (err, metadata) {
@@ -656,14 +824,7 @@ describe('Image metadata', function () {
   });
 
   it('Add EXIF metadata to JPEG', async () => {
-    const data = await sharp({
-      create: {
-        width: 8,
-        height: 8,
-        channels: 3,
-        background: 'red'
-      }
-    })
+    const data = await sharp({ create })
       .jpeg()
       .withMetadata({
         exif: {
@@ -675,19 +836,12 @@ describe('Image metadata', function () {
 
     const { exif } = await sharp(data).metadata();
     const parsedExif = exifReader(exif);
-    assert.strictEqual(parsedExif.image.Software, 'sharp');
-    assert.strictEqual(parsedExif.exif.ExposureTime, 0.2);
+    assert.strictEqual(parsedExif.Image.Software, 'sharp');
+    assert.strictEqual(parsedExif.Photo.ExposureTime, 0.2);
   });
 
   it('Set density of JPEG', async () => {
-    const data = await sharp({
-      create: {
-        width: 8,
-        height: 8,
-        channels: 3,
-        background: 'red'
-      }
-    })
+    const data = await sharp({ create })
       .withMetadata({
         density: 300
       })
@@ -699,14 +853,7 @@ describe('Image metadata', function () {
   });
 
   it('Set density of PNG', async () => {
-    const data = await sharp({
-      create: {
-        width: 8,
-        height: 8,
-        channels: 3,
-        background: 'red'
-      }
-    })
+    const data = await sharp({ create })
       .withMetadata({
         density: 96
       })
@@ -792,19 +939,66 @@ describe('Image metadata', function () {
       channels: 3,
       depth: 'uchar',
       isProgressive: false,
+      isPalette: false,
+      bitsPerSample: 8,
       pages: 1,
       pagePrimary: 0,
       compression: 'av1',
       hasProfile: false,
-      hasAlpha: false
+      hasAlpha: false,
+      autoOrient: {
+        width: 2048,
+        height: 858
+      }
     });
+  });
+
+  it('withMetadata adds default sRGB profile', async () => {
+    const data = await sharp(fixtures.inputJpg)
+      .resize(32, 24)
+      .withMetadata()
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    const { colorSpace, deviceClass, intent } = icc.parse(metadata.icc);
+    assert.strictEqual(colorSpace, 'RGB');
+    assert.strictEqual(deviceClass, 'Monitor');
+    assert.strictEqual(intent, 'Perceptual');
+  });
+
+  it('withMetadata adds default sRGB profile to RGB16', async () => {
+    const data = await sharp({ create })
+      .toColorspace('rgb16')
+      .png()
+      .withMetadata()
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(metadata.depth, 'ushort');
+
+    const { description } = icc.parse(metadata.icc);
+    assert.strictEqual(description, 'sRGB');
+  });
+
+  it('withMetadata adds P3 profile to 16-bit PNG', async () => {
+    const data = await sharp({ create })
+      .toColorspace('rgb16')
+      .png()
+      .withMetadata({ icc: 'p3' })
+      .toBuffer();
+
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(metadata.depth, 'ushort');
+
+    const { description } = icc.parse(metadata.icc);
+    assert.strictEqual(description, 'sP3C');
   });
 
   it('File input with corrupt header fails gracefully', function (done) {
     sharp(fixtures.inputJpgWithCorruptHeader)
       .metadata(function (err) {
         assert.strictEqual(true, !!err);
-        assert.ok(err.message.includes('Input file has corrupt header: VipsJpeg: Premature end of'), err);
+        assert.ok(err.message.includes('Input file has corrupt header: VipsJpeg: premature end of'), err);
         done();
       });
   });
@@ -813,7 +1007,7 @@ describe('Image metadata', function () {
     sharp(fs.readFileSync(fixtures.inputJpgWithCorruptHeader))
       .metadata(function (err) {
         assert.strictEqual(true, !!err);
-        assert.ok(err.message.includes('Input buffer has corrupt header: VipsJpeg: Premature end of'), err);
+        assert.ok(err.message.includes('Input buffer has corrupt header: VipsJpeg: premature end of'), err);
         done();
       });
   });
@@ -827,7 +1021,253 @@ describe('Image metadata', function () {
       });
   });
 
-  describe('Invalid withMetadata parameters', function () {
+  it('keepExif maintains all EXIF metadata', async () => {
+    const data1 = await sharp({ create })
+      .withExif({
+        IFD0: {
+          Copyright: 'Test 1',
+          Software: 'sharp'
+        }
+      })
+      .jpeg()
+      .toBuffer();
+
+    const data2 = await sharp(data1)
+      .keepExif()
+      .toBuffer();
+
+    const md2 = await sharp(data2).metadata();
+    const exif2 = exifReader(md2.exif);
+    assert.strictEqual(exif2.Image.Copyright, 'Test 1');
+    assert.strictEqual(exif2.Image.Software, 'sharp');
+  });
+
+  it('withExif replaces all EXIF metadata', async () => {
+    const data1 = await sharp({ create })
+      .withExif({
+        IFD0: {
+          Copyright: 'Test 1',
+          Software: 'sharp'
+        }
+      })
+      .jpeg()
+      .toBuffer();
+
+    const md1 = await sharp(data1).metadata();
+    const exif1 = exifReader(md1.exif);
+    assert.strictEqual(exif1.Image.Copyright, 'Test 1');
+    assert.strictEqual(exif1.Image.Software, 'sharp');
+
+    const data2 = await sharp(data1)
+      .withExif({
+        IFD0: {
+          Copyright: 'Test 2'
+        }
+      })
+      .toBuffer();
+
+    const md2 = await sharp(data2).metadata();
+    const exif2 = exifReader(md2.exif);
+    assert.strictEqual(exif2.Image.Copyright, 'Test 2');
+    assert.strictEqual(exif2.Image.Software, undefined);
+  });
+
+  it('withExifMerge merges all EXIF metadata', async () => {
+    const data1 = await sharp({ create })
+      .withExif({
+        IFD0: {
+          Copyright: 'Test 1'
+        }
+      })
+      .jpeg()
+      .toBuffer();
+
+    const md1 = await sharp(data1).metadata();
+    const exif1 = exifReader(md1.exif);
+    assert.strictEqual(exif1.Image.Copyright, 'Test 1');
+    assert.strictEqual(exif1.Image.Software, undefined);
+
+    const data2 = await sharp(data1)
+      .withExifMerge({
+        IFD0: {
+          Copyright: 'Test 2',
+          Software: 'sharp'
+
+        }
+      })
+      .toBuffer();
+
+    const md2 = await sharp(data2).metadata();
+    const exif2 = exifReader(md2.exif);
+    assert.strictEqual(exif2.Image.Copyright, 'Test 2');
+    assert.strictEqual(exif2.Image.Software, 'sharp');
+  });
+
+  describe('XMP metadata tests', function () {
+    it('withMetadata preserves existing XMP metadata from input', async () => {
+      const data = await sharp(fixtures.inputJpgWithIptcAndXmp)
+        .resize(320, 240)
+        .withMetadata()
+        .toBuffer();
+
+      const metadata = await sharp(data).metadata();
+      assert.strictEqual('object', typeof metadata.xmp);
+      assert.strictEqual(true, metadata.xmp instanceof Buffer);
+      assert.strictEqual(true, metadata.xmp.length > 0);
+      // Check that XMP starts with the expected XML declaration
+      assert.strictEqual(metadata.xmp.indexOf(Buffer.from('<?xpacket begin="')), 0);
+    });
+
+    it('keepXmp preserves existing XMP metadata from input', async () => {
+      const data = await sharp(fixtures.inputJpgWithIptcAndXmp)
+        .resize(320, 240)
+        .keepXmp()
+        .toBuffer();
+
+      const metadata = await sharp(data).metadata();
+      assert.strictEqual('object', typeof metadata.xmp);
+      assert.strictEqual(true, metadata.xmp instanceof Buffer);
+      assert.strictEqual(true, metadata.xmp.length > 0);
+      // Check that XMP starts with the expected XML declaration
+      assert.strictEqual(metadata.xmp.indexOf(Buffer.from('<?xpacket begin="')), 0);
+    });
+
+    it('withXmp with custom XMP replaces existing XMP', async () => {
+      const customXmp = '<?xml version="1.0"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:creator><rdf:Seq><rdf:li>Test Creator</rdf:li></rdf:Seq></dc:creator><dc:title><rdf:Alt><rdf:li xml:lang="x-default">Test Title</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF></x:xmpmeta>';
+
+      const data = await sharp(fixtures.inputJpgWithIptcAndXmp)
+        .resize(320, 240)
+        .withXmp(customXmp)
+        .toBuffer();
+
+      const metadata = await sharp(data).metadata();
+      assert.strictEqual('object', typeof metadata.xmp);
+      assert.strictEqual(true, metadata.xmp instanceof Buffer);
+
+      // Check that the XMP contains our custom content
+      const xmpString = metadata.xmp.toString();
+      assert.strictEqual(true, xmpString.includes('Test Creator'));
+      assert.strictEqual(true, xmpString.includes('Test Title'));
+    });
+
+    it('withXmp with custom XMP buffer on image without existing XMP', async () => {
+      const customXmp = '<?xml version="1.0"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:description><rdf:Alt><rdf:li xml:lang="x-default">Added via Sharp</rdf:li></rdf:Alt></dc:description></rdf:Description></rdf:RDF></x:xmpmeta>';
+
+      const data = await sharp(fixtures.inputJpg)
+        .resize(320, 240)
+        .withXmp(customXmp)
+        .toBuffer();
+
+      const metadata = await sharp(data).metadata();
+      assert.strictEqual('object', typeof metadata.xmp);
+      assert.strictEqual(true, metadata.xmp instanceof Buffer);
+
+      // Check that the XMP contains our custom content
+      const xmpString = metadata.xmp.toString();
+      assert.strictEqual(true, xmpString.includes('Added via Sharp'));
+    });
+
+    it('withXmp with valid XMP metadata for different image formats', async () => {
+      const customXmp = '<?xml version="1.0"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:subject><rdf:Bag><rdf:li>test</rdf:li><rdf:li>metadata</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>';
+
+      // Test with JPEG output
+      const jpegData = await sharp(fixtures.inputJpg)
+        .resize(100, 100)
+        .jpeg()
+        .withXmp(customXmp)
+        .toBuffer();
+
+      const jpegMetadata = await sharp(jpegData).metadata();
+      assert.strictEqual('object', typeof jpegMetadata.xmp);
+      assert.strictEqual(true, jpegMetadata.xmp instanceof Buffer);
+      assert.strictEqual(true, jpegMetadata.xmp.toString().includes('test'));
+
+      // Test with PNG output (PNG should also support XMP metadata)
+      const pngData = await sharp(fixtures.inputJpg)
+        .resize(100, 100)
+        .png()
+        .withXmp(customXmp)
+        .toBuffer();
+
+      const pngMetadata = await sharp(pngData).metadata();
+      // PNG format should preserve XMP metadata when using withXmp
+      assert.strictEqual('object', typeof pngMetadata.xmp);
+      assert.strictEqual(true, pngMetadata.xmp instanceof Buffer);
+      assert.strictEqual(true, pngMetadata.xmp.toString().includes('test'));
+
+      // Test with WebP output (WebP should also support XMP metadata)
+      const webpData = await sharp(fixtures.inputJpg)
+        .resize(100, 100)
+        .webp()
+        .withXmp(customXmp)
+        .toBuffer();
+
+      const webpMetadata = await sharp(webpData).metadata();
+      // WebP format should preserve XMP metadata when using withXmp
+      assert.strictEqual('object', typeof webpMetadata.xmp);
+      assert.strictEqual(true, webpMetadata.xmp instanceof Buffer);
+      assert.strictEqual(true, webpMetadata.xmp.toString().includes('test'));
+    });
+
+    it('XMP metadata persists through multiple operations', async () => {
+      const customXmp = '<?xml version="1.0"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier>persistent-test</dc:identifier></rdf:Description></rdf:RDF></x:xmpmeta>';
+
+      const data = await sharp(fixtures.inputJpg)
+        .resize(320, 240)
+        .withXmp(customXmp)
+        .rotate(90)
+        .blur(1)
+        .sharpen()
+        .toBuffer();
+
+      const metadata = await sharp(data).metadata();
+      assert.strictEqual('object', typeof metadata.xmp);
+      assert.strictEqual(true, metadata.xmp instanceof Buffer);
+      assert.strictEqual(true, metadata.xmp.toString().includes('persistent-test'));
+    });
+
+    it('withXmp XMP works with WebP format specifically', async () => {
+      const webpXmp = '<?xml version="1.0"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:creator><rdf:Seq><rdf:li>WebP Creator</rdf:li></rdf:Seq></dc:creator><dc:format>image/webp</dc:format></rdf:Description></rdf:RDF></x:xmpmeta>';
+
+      const data = await sharp(fixtures.inputJpg)
+        .resize(120, 80)
+        .webp({ quality: 80 })
+        .withXmp(webpXmp)
+        .toBuffer();
+
+      const metadata = await sharp(data).metadata();
+      assert.strictEqual('webp', metadata.format);
+      assert.strictEqual('object', typeof metadata.xmp);
+      assert.strictEqual(true, metadata.xmp instanceof Buffer);
+
+      const xmpString = metadata.xmp.toString();
+      assert.strictEqual(true, xmpString.includes('WebP Creator'));
+      assert.strictEqual(true, xmpString.includes('image/webp'));
+    });
+
+    it('withXmp XMP validation - non-string input', function () {
+      assert.throws(
+        () => sharp().withXmp(123),
+        /Expected non-empty string for xmp but received 123 of type number/
+      );
+    });
+
+    it('withXmp XMP validation - null input', function () {
+      assert.throws(
+        () => sharp().withXmp(null),
+        /Expected non-empty string for xmp but received null of type object/
+      );
+    });
+
+    it('withXmp XMP validation - empty string', function () {
+      assert.throws(
+        () => sharp().withXmp(''),
+        /Expected non-empty string for xmp/
+      );
+    });
+  });
+
+  describe('Invalid parameters', function () {
     it('String orientation', function () {
       assert.throws(function () {
         sharp().withMetadata({ orientation: 'zoinks' });
@@ -877,6 +1317,23 @@ describe('Image metadata', function () {
       assert.throws(function () {
         sharp().withMetadata({ exif: { ifd0: { fail: false } } });
       });
+    });
+    it('withIccProfile invalid profile', () => {
+      assert.throws(
+        () => sharp().withIccProfile(false),
+        /Expected string for icc but received false of type boolean/
+      );
+    });
+    it('withIccProfile missing attach', () => {
+      assert.doesNotThrow(
+        () => sharp().withIccProfile('test', {})
+      );
+    });
+    it('withIccProfile invalid attach', () => {
+      assert.throws(
+        () => sharp().withIccProfile('test', { attach: 1 }),
+        /Expected boolean for attach but received 1 of type number/
+      );
     });
   });
 });

@@ -39,7 +39,7 @@ describe('GIF input', () => {
       })
   );
 
-  it('Animated GIF first page to PNG', () =>
+  it('Animated GIF first page to non-animated GIF', () =>
     sharp(fixtures.inputGifAnimated)
       .toBuffer({ resolveWithObject: true })
       .then(({ data, info }) => {
@@ -49,10 +49,12 @@ describe('GIF input', () => {
         assert.strictEqual(80, info.width);
         assert.strictEqual(80, info.height);
         assert.strictEqual(4, info.channels);
+        assert.strictEqual(undefined, info.pages);
+        assert.strictEqual(undefined, info.pageHeight);
       })
   );
 
-  it('Animated GIF all pages to PNG "toilet roll"', () =>
+  it('Animated GIF round trip', () =>
     sharp(fixtures.inputGifAnimated, { pages: -1 })
       .toBuffer({ resolveWithObject: true })
       .then(({ data, info }) => {
@@ -62,6 +64,8 @@ describe('GIF input', () => {
         assert.strictEqual(80, info.width);
         assert.strictEqual(2400, info.height);
         assert.strictEqual(4, info.channels);
+        assert.strictEqual(30, info.pages);
+        assert.strictEqual(80, info.pageHeight);
       })
   );
 
@@ -183,6 +187,17 @@ describe('GIF input', () => {
     );
   });
 
+  it('invalid keepDuplicateFrames throws', () => {
+    assert.throws(
+      () => sharp().gif({ keepDuplicateFrames: -1 }),
+      /Expected boolean for keepDuplicateFrames but received -1 of type number/
+    );
+    assert.throws(
+      () => sharp().gif({ keepDuplicateFrames: 'fail' }),
+      /Expected boolean for keepDuplicateFrames but received fail of type string/
+    );
+  });
+
   it('should work with streams when only animated is set', function (done) {
     fs.createReadStream(fixtures.inputGifAnimated)
       .pipe(sharp({ animated: true }))
@@ -219,5 +234,44 @@ describe('GIF input', () => {
     const before = await input.gif({ interPaletteMaxError: 0 }).toBuffer();
     const after = await input.gif({ interPaletteMaxError: 100 }).toBuffer();
     assert.strict(before.length > after.length);
+  });
+
+  it('should keep duplicate frames via keepDuplicateFrames', async () => {
+    const create = { width: 8, height: 8, channels: 4, background: 'blue' };
+    const input = sharp([{ create }, { create }], { join: { animated: true } });
+
+    const before = await input.gif({ keepDuplicateFrames: false }).toBuffer();
+    const after = await input.gif({ keepDuplicateFrames: true }).toBuffer();
+    assert.strict(before.length < after.length);
+
+    const beforeMeta = await sharp(before).metadata();
+    const afterMeta = await sharp(after).metadata();
+    assert.strictEqual(beforeMeta.pages, 1);
+    assert.strictEqual(afterMeta.pages, 2);
+  });
+
+  it('non-animated input defaults to no-loop', async () => {
+    for (const input of [fixtures.inputGif, fixtures.inputPng]) {
+      const data = await sharp(input)
+        .resize(8)
+        .gif({ effort: 1 })
+        .toBuffer();
+
+      const { format, pages, loop } = await sharp(data).metadata();
+      assert.strictEqual('gif', format);
+      assert.strictEqual(1, pages);
+      assert.strictEqual(1, loop);
+    }
+  });
+
+  it('Animated GIF to animated WebP merges identical frames', async () => {
+    const webp = await sharp(fixtures.inputGifAnimated, { animated: true })
+      .webp()
+      .toBuffer();
+
+    const { delay, loop, pages } = await sharp(webp).metadata();
+    assert.deepStrictEqual([120, 120, 90, 120, 120, 90, 120, 90, 30], delay);
+    assert.strictEqual(0, loop);
+    assert.strictEqual(9, pages);
   });
 });

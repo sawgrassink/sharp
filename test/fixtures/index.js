@@ -14,29 +14,26 @@ const getPath = function (filename) {
 
 // Generates a 64-bit-as-binary-string image fingerprint
 // Based on the dHash gradient method - see http://www.hackerfactor.com/blog/index.php?/archives/529-Kind-of-Like-That.html
-const fingerprint = function (image, callback) {
-  sharp(image)
+async function fingerprint (image) {
+  return sharp(image)
     .flatten('gray')
     .greyscale()
     .normalise()
     .resize(9, 8, { fit: sharp.fit.fill })
     .raw()
-    .toBuffer(function (err, data) {
-      if (err) {
-        callback(err);
-      } else {
-        let fingerprint = '';
-        for (let col = 0; col < 8; col++) {
-          for (let row = 0; row < 8; row++) {
-            const left = data[(row * 8) + col];
-            const right = data[(row * 8) + col + 1];
-            fingerprint = fingerprint + (left < right ? '1' : '0');
-          }
+    .toBuffer()
+    .then(function (data) {
+      let fingerprint = '';
+      for (let col = 0; col < 8; col++) {
+        for (let row = 0; row < 8; row++) {
+          const left = data[(row * 8) + col];
+          const right = data[(row * 8) + col + 1];
+          fingerprint = fingerprint + (left < right ? '1' : '0');
         }
-        callback(null, fingerprint);
       }
+      return fingerprint;
     });
-};
+}
 
 module.exports = {
 
@@ -83,6 +80,8 @@ module.exports = {
   inputPngWithGreyAlpha: getPath('grey-8bit-alpha.png'),
   inputPngWithOneColor: getPath('2x2_fdcce6.png'),
   inputPngWithTransparency16bit: getPath('tbgn2c16.png'), // http://www.schaik.com/pngsuite/tbgn2c16.png
+  inputPng8BitGreyBackground: getPath('bgbn4a08.png'), // http://www.schaik.com/pngsuite/bgbn4a08.png
+  inputPng16BitGreyBackground: getPath('bggn4a16.png'), // http://www.schaik.com/pngsuite/bggn4a16.png
   inputPng16BitGreyAlpha: getPath('16-bit-grey-alpha.png'), // CC-BY-NC-SA florc http://www.colourlovers.com/pattern/50713/pat
   inputPngOverlayLayer0: getPath('alpha-layer-0-background.png'),
   inputPngOverlayLayer1: getPath('alpha-layer-1-fill.png'),
@@ -102,6 +101,7 @@ module.exports = {
   inputPngTrimSpecificColour16bit: getPath('Flag_of_the_Netherlands-16bit.png'), // convert Flag_of_the_Netherlands.png -depth 16 Flag_of_the_Netherlands-16bit.png
   inputPngTrimSpecificColourIncludeAlpha: getPath('Flag_of_the_Netherlands-alpha.png'), // convert Flag_of_the_Netherlands.png -alpha set -background none -channel A -evaluate multiply 0.5 +channel Flag_of_the_Netherlands-alpha.png
   inputPngUint32Limit: getPath('65536-uint32-limit.png'), // https://alexandre.alapetite.fr/doc-alex/large-image/
+  inputPngWithProPhotoProfile: getPath('prophoto.png'),
 
   inputWebP: getPath('4.webp'), // http://www.gstatic.com/webp/gallery/4.webp
   inputWebPWithTransparency: getPath('5_webp_a.webp'), // http://www.gstatic.com/webp/gallery3/5_webp_a.webp
@@ -114,8 +114,10 @@ module.exports = {
   inputTiffUncompressed: getPath('uncompressed_tiff.tiff'), // https://code.google.com/archive/p/imagetestsuite/wikis/TIFFTestSuite.wiki file: 0c84d07e1b22b76f24cccc70d8788e4a.tif
   inputTiff8BitDepth: getPath('8bit_depth.tiff'),
   inputTifftagPhotoshop: getPath('tifftag-photoshop.tiff'), // https://github.com/lovell/sharp/issues/1600
+  inputTiffFogra: getPath('fogra-0-100-100-0.tif'), // https://github.com/lovell/sharp/issues/4045
 
   inputJp2: getPath('relax.jp2'), // https://www.fnordware.com/j2k/relax.jp2
+  inputJp2TileParts: getPath('relax_tileparts.jp2'), // kdu_expand -i relax.jp2 -o relax-tmp.tif ; kdu_compress -i relax-tmp.tif -o relax_tileparts.jp2 -jp2_space sRGB Clayers=8 -rate 1.0,0.04 Stiles='{128,128}' ORGtparts=L ; rm relax-tmp.tif
   inputGif: getPath('Crash_test.gif'), // http://upload.wikimedia.org/wikipedia/commons/e/e3/Crash_test.gif
   inputGifGreyPlusAlpha: getPath('grey-plus-alpha.gif'), // http://i.imgur.com/gZ5jlmE.gif
   inputGifAnimated: getPath('rotating-squares.gif'), // CC0 https://loading.io/spinner/blocks/-rotating-squares-preloader-gif
@@ -126,6 +128,8 @@ module.exports = {
   inputAvif: getPath('sdr_cosmos12920_cicp1-13-6_yuv444_full_qp10.avif'), // CC by-nc-nd https://github.com/AOMediaCodec/av1-avif/tree/master/testFiles/Netflix
 
   inputJPGBig: getPath('flowers.jpeg'),
+
+  inputPngDotAndLines: getPath('dot-and-lines.png'),
 
   inputPngStripesV: getPath('stripesV.png'),
   inputPngStripesH: getPath('stripesH.png'),
@@ -138,6 +142,7 @@ module.exports = {
 
   testPattern: getPath('test-pattern.png'),
 
+  inputPngWithTransparent: getPath('d.png'),
   // Path for tests requiring human inspection
   path: getPath,
 
@@ -149,46 +154,44 @@ module.exports = {
   // Verify similarity of expected vs actual images via fingerprint
   // Specify distance threshold using `options={threshold: 42}`, default
   // `threshold` is 5;
-  assertSimilar: function (expectedImage, actualImage, options, callback) {
+  assertSimilar: async function (expectedImage, actualImage, options, callback) {
     if (typeof options === 'function') {
       callback = options;
       options = {};
     }
-
-    if (typeof options === 'undefined' && options === null) {
+    if (typeof options === 'undefined' || options === null) {
       options = {};
     }
-
     if (options.threshold === null || typeof options.threshold === 'undefined') {
       options.threshold = 5; // ~7% threshold
     }
-
     if (typeof options.threshold !== 'number') {
       throw new TypeError('`options.threshold` must be a number');
     }
 
-    if (typeof callback !== 'function') {
-      throw new TypeError('`callback` must be a function');
+    try {
+      const [expectedFingerprint, actualFingerprint] = await Promise.all([
+        fingerprint(expectedImage),
+        fingerprint(actualImage)
+      ]);
+      let distance = 0;
+      for (let i = 0; i < 64; i++) {
+        if (expectedFingerprint[i] !== actualFingerprint[i]) {
+          distance++;
+        }
+      }
+      if (distance > options.threshold) {
+        throw new Error(`Expected maximum similarity distance: ${options.threshold}. Actual: ${distance}.`);
+      }
+    } catch (err) {
+      if (callback) {
+        return callback(err);
+      }
+      throw err;
     }
-
-    fingerprint(expectedImage, function (err, expectedFingerprint) {
-      if (err) return callback(err);
-      fingerprint(actualImage, function (err, actualFingerprint) {
-        if (err) return callback(err);
-        let distance = 0;
-        for (let i = 0; i < 64; i++) {
-          if (expectedFingerprint[i] !== actualFingerprint[i]) {
-            distance++;
-          }
-        }
-
-        if (distance > options.threshold) {
-          return callback(new Error('Expected maximum similarity distance: ' + options.threshold + '. Actual: ' + distance + '.'));
-        }
-
-        callback();
-      });
-    });
+    if (callback) {
+      callback();
+    }
   },
 
   assertMaxColourDistance: function (actualImagePath, expectedImagePath, acceptedDistance) {

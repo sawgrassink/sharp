@@ -102,6 +102,52 @@ describe('WebP', function () {
     });
   });
 
+  it('can produce a different file size using smartDeblock', () =>
+    sharp(fixtures.inputPngOverlayLayer0)
+      .resize(320, 240)
+      .webp({ quality: 30, smartDeblock: false })
+      .toBuffer()
+      .then(withoutSmartDeblock =>
+        sharp(fixtures.inputPngOverlayLayer0)
+          .resize(320, 240)
+          .webp({ quality: 30, smartDeblock: true })
+          .toBuffer()
+          .then(withSmartDeblock => {
+            assert.strictEqual(true, withSmartDeblock.length !== withoutSmartDeblock.length);
+          })
+      )
+  );
+
+  it('invalid smartDeblock throws', () => {
+    assert.throws(
+      () => sharp().webp({ smartDeblock: 1 }),
+      /Expected boolean for webpSmartDeblock but received 1 of type number/
+    );
+  });
+
+  it('should produce a different file size with specific preset', () =>
+    sharp(fixtures.inputJpg)
+      .resize(320, 240)
+      .webp({ preset: 'default' })
+      .toBuffer()
+      .then(presetDefault =>
+        sharp(fixtures.inputJpg)
+          .resize(320, 240)
+          .webp({ preset: 'picture' })
+          .toBuffer()
+          .then(presetPicture => {
+            assert.notStrictEqual(presetDefault.length, presetPicture.length);
+          })
+      )
+  );
+
+  it('invalid preset throws', () => {
+    assert.throws(
+      () => sharp().webp({ preset: 'fail' }),
+      /Expected one of: default, photo, picture, drawing, icon, text for preset but received fail of type string/
+    );
+  });
+
   it('should produce a smaller file size with increased effort', () =>
     sharp(fixtures.inputJpg)
       .resize(320, 240)

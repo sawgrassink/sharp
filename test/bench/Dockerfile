@@ -1,11 +1,12 @@
-FROM ubuntu:22.04
+FROM ubuntu:25.04
 ARG BRANCH=main
 
 # Install basic dependencies
-RUN apt-get -y update && apt-get install -y build-essential curl git
+RUN apt-get -y update && apt-get install -y build-essential curl git ca-certificates gnupg
 
 # Install latest Node.js LTS
-RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh
+RUN bash nodesource_setup.sh
 RUN apt-get install -y nodejs
 
 # Install benchmark dependencies
@@ -23,4 +24,5 @@ RUN cat /etc/os-release | grep VERSION=
 RUN node -v
 
 WORKDIR /tmp/sharp/test/bench
+
 CMD [ "node", "perf" ]

@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
-const eachLimit = require('async/eachLimit');
 const extractZip = require('extract-zip');
 
 const sharp = require('../../');
@@ -31,11 +30,10 @@ const assertDeepZoomTiles = function (directory, expectedSize, expectedLevels, d
     });
   });
   // Verify each tile is <= expectedSize
-  eachLimit(tiles, 8, function (tile, done) {
-    sharp(tile).metadata(function (err, metadata) {
-      if (err) {
-        done(err);
-      } else {
+  Promise.all(tiles.map(function (tile) {
+    return sharp(tile)
+      .metadata()
+      .then(function (metadata) {
         assert.strictEqual('jpeg', metadata.format);
         assert.strictEqual('srgb', metadata.space);
         assert.strictEqual(3, metadata.channels);
@@ -43,10 +41,10 @@ const assertDeepZoomTiles = function (directory, expectedSize, expectedLevels, d
         assert.strictEqual(false, metadata.hasAlpha);
         assert.strictEqual(true, metadata.width <= expectedSize);
         assert.strictEqual(true, metadata.height <= expectedSize);
-        done();
-      }
-    });
-  }, done);
+      });
+  }))
+    .then(() => done())
+    .catch(done);
 };
 
 const assertZoomifyTiles = function (directory, expectedTileSize, expectedLevels, done) {
@@ -125,7 +123,7 @@ describe('Tile', function () {
     [1, 8192].forEach(function (size) {
       assert.doesNotThrow(function () {
         sharp().tile({
-          size: size
+          size
         });
       });
     });
@@ -135,7 +133,7 @@ describe('Tile', function () {
     ['zoinks', 1.1, -1, 0, 8193].forEach(function (size) {
       assert.throws(function () {
         sharp().tile({
-          size: size
+          size
         });
       });
     });
@@ -146,7 +144,7 @@ describe('Tile', function () {
       assert.doesNotThrow(function () {
         sharp().tile({
           size: 8192,
-          overlap: overlap
+          overlap
         });
       });
     });
@@ -156,7 +154,7 @@ describe('Tile', function () {
     ['zoinks', 1.1, -1, 8193].forEach(function (overlap) {
       assert.throws(function () {
         sharp().tile({
-          overlap: overlap
+          overlap
         });
       });
     });
@@ -166,7 +164,7 @@ describe('Tile', function () {
     ['fs', 'zip'].forEach(function (container) {
       assert.doesNotThrow(function () {
         sharp().tile({
-          container: container
+          container
         });
       });
     });
@@ -176,7 +174,7 @@ describe('Tile', function () {
     ['zoinks', 1].forEach(function (container) {
       assert.throws(function () {
         sharp().tile({
-          container: container
+          container
         });
       });
     });
@@ -186,7 +184,7 @@ describe('Tile', function () {
     ['dz', 'google', 'zoomify'].forEach(function (layout) {
       assert.doesNotThrow(function () {
         sharp().tile({
-          layout: layout
+          layout
         });
       });
     });
@@ -196,7 +194,7 @@ describe('Tile', function () {
     ['zoinks', 1].forEach(function (layout) {
       assert.throws(function () {
         sharp().tile({
-          layout: layout
+          layout
         });
       });
     });
@@ -254,7 +252,7 @@ describe('Tile', function () {
     [90, 270, -90].forEach(function (angle) {
       assert.doesNotThrow(function () {
         sharp().tile({
-          angle: angle
+          angle
         });
       });
     });
@@ -264,7 +262,7 @@ describe('Tile', function () {
     ['zoinks', 1.1, -1, 27].forEach(function (angle) {
       assert.throws(function () {
         sharp().tile({
-          angle: angle
+          angle
         });
       });
     });
@@ -485,7 +483,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             fs.stat(path.join(directory, 'ImageProperties.xml'), function (err, stat) {
               if (err) throw err;
               assert.strictEqual(true, stat.isFile());
@@ -511,7 +509,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             assertZoomifyTiles(directory, 256, 1, done);
           });
       });
@@ -532,7 +530,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             assertZoomifyTiles(directory, 256, 5, done);
           });
       });
@@ -553,7 +551,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             assertZoomifyTiles(directory, 256, 13, done);
           });
       });
@@ -577,7 +575,7 @@ describe('Tile', function () {
             assert.strictEqual(2048, info.width);
             assert.strictEqual(1536, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             assertZoomifyTiles(directory, 256, 4, done);
           });
       });
@@ -596,7 +594,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             fs.stat(path.join(directory, '0', '0', '0.jpg'), function (err, stat) {
               if (err) throw err;
               assert.strictEqual(true, stat.isFile());
@@ -623,7 +621,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             const sample = path.join(directory, '0', '0', '0.jpg');
             sharp(sample).metadata(function (err, metadata) {
               if (err) throw err;
@@ -660,7 +658,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             const sample = path.join(directory, '0', '0', '0.png');
             sharp(sample).metadata(function (err, metadata) {
               if (err) throw err;
@@ -698,7 +696,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             const sample = path.join(directory, '0', '0', '0.webp');
             sharp(sample).metadata(function (err, metadata) {
               if (err) throw err;
@@ -734,31 +732,8 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
-
+            assert.strictEqual(undefined, info.size);
             assertGoogleTiles(directory, 256, 1, done);
-          });
-      });
-    });
-
-    it('Google layout with depth onepixel', function (done) {
-      const directory = fixtures.path('output.google_depth_onepixel.dzi');
-      fs.rm(directory, { recursive: true }, function () {
-        sharp(fixtures.inputJpg)
-          .tile({
-            layout: 'google',
-            depth: 'onepixel',
-            size: 256
-          })
-          .toFile(directory, function (err, info) {
-            if (err) throw err;
-            assert.strictEqual('dz', info.format);
-            assert.strictEqual(2725, info.width);
-            assert.strictEqual(2225, info.height);
-            assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
-
-            assertGoogleTiles(directory, 256, 13, done);
           });
       });
     });
@@ -778,8 +753,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
-
+            assert.strictEqual(undefined, info.size);
             assertGoogleTiles(directory, 256, 5, done);
           });
       });
@@ -803,8 +777,7 @@ describe('Tile', function () {
             assert.strictEqual(2809, info.width);
             assert.strictEqual(2074, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
-
+            assert.strictEqual(undefined, info.size);
             assertGoogleTiles(directory, 256, 5, done);
           });
       });
@@ -824,7 +797,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             fixtures.assertSimilar(fixtures.expected('tile_centered.jpg'), fs.readFileSync(path.join(directory, '0', '0', '0.jpg')), done);
           });
       });
@@ -844,7 +817,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             fixtures.assertSimilar(fixtures.expected('tile_centered.jpg'), fs.readFileSync(path.join(directory, '0', '0', '0.jpg')), done);
           });
       });
@@ -866,7 +839,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             const infoJson = require(path.join(directory, 'info.json'));
             assert.strictEqual('http://iiif.io/api/image/2/context.json', infoJson['@context']);
             assert.strictEqual(`${id}/${name}`, infoJson['@id']);
@@ -896,7 +869,7 @@ describe('Tile', function () {
             assert.strictEqual(2725, info.width);
             assert.strictEqual(2225, info.height);
             assert.strictEqual(3, info.channels);
-            assert.strictEqual('number', typeof info.size);
+            assert.strictEqual(undefined, info.size);
             const infoJson = require(path.join(directory, 'info.json'));
             assert.strictEqual('http://iiif.io/api/image/3/context.json', infoJson['@context']);
             assert.strictEqual('ImageService3', infoJson.type);
@@ -928,7 +901,7 @@ describe('Tile', function () {
               if (err) throw err;
               assert.strictEqual(true, stat.isFile());
               assert.strictEqual(true, stat.size > 0);
-              extractZip(container, { dir: path.dirname(extractTo) })
+              extractZip(container, { dir: extractTo })
                 .then(() => {
                   assertDeepZoomTiles(directory, 256, 13, done);
                 })
@@ -959,7 +932,7 @@ describe('Tile', function () {
               if (err) throw err;
               assert.strictEqual(true, stat.isFile());
               assert.strictEqual(true, stat.size > 0);
-              extractZip(container, { dir: path.dirname(extractTo) })
+              extractZip(container, { dir: extractTo })
                 .then(() => {
                   assertDeepZoomTiles(directory, 256, 13, done);
                 })
@@ -988,7 +961,7 @@ describe('Tile', function () {
               if (err) throw err;
               assert.strictEqual(true, stat.isFile());
               assert.strictEqual(true, stat.size > 0);
-              extractZip(container, { dir: path.dirname(extractTo) })
+              extractZip(container, { dir: extractTo })
                 .then(() => {
                   assertDeepZoomTiles(directory, 256, 13, done);
                 })

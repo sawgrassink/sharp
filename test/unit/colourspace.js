@@ -7,6 +7,7 @@ const assert = require('assert');
 
 const sharp = require('../../');
 const fixtures = require('../fixtures');
+const maxColourDistance = require('../../lib/sharp')._maxColourDistance;
 
 describe('Colour space conversion', function () {
   it('To greyscale', function (done) {
@@ -104,6 +105,90 @@ describe('Colour space conversion', function () {
       { c, m, y, k },
       { c: 55, m: 27, y: 0, k: 0 }
     );
+  });
+
+  it('CMYK profile to CMYK profile conversion using perceptual intent', async () => {
+    const data = await sharp(fixtures.inputTiffFogra)
+      .resize(320, 240)
+      .toColourspace('cmyk')
+      .pipelineColourspace('cmyk')
+      .withIccProfile(fixtures.path('XCMYK 2017.icc'))
+      .raw()
+      .toBuffer();
+
+    const [c, m, y, k] = data;
+    assert.deepStrictEqual(
+      { c, m, y, k },
+      { c: 1, m: 239, y: 227, k: 5 }
+    );
+  });
+
+  it('withIccProfile invalid intent throws', () => {
+    assert.throws(
+      () => sharp().withIccProfile(fixtures.path('IEC_RGB.icc'), { intent: 99 }),
+      /integer between 0 and 3/
+    );
+  });
+
+  it('withIccProfile uses default intent when options omitted', async () => {
+    const data = await sharp(fixtures.inputPngGradients)
+      .withIccProfile(fixtures.path('IEC_RGB.icc')) // no options
+      .toBuffer();
+    const metadata = await sharp(data).metadata();
+    assert.strictEqual(typeof metadata, 'object'); // ensures it processed fine
+  });
+
+  it('withIccProfile accepts intent in valid range', async () => {
+    const data = await sharp(fixtures.inputPngGradients)
+      .withIccProfile(fixtures.path('IEC_RGB.icc'), { intent: 1 }) // relative colorimetric
+      .toBuffer();
+    assert.ok(data.length > 0);
+  });
+
+  it('withIccProfile noop bypasses ICC transforms (identical to base)', async () => {
+    const base = await sharp(fixtures.inputPngGradients)
+      .png()
+      .toBuffer();
+    const noopOut = await sharp(fixtures.inputPngGradients)
+      .png()
+      .withIccProfile('noop')
+      .toBuffer();
+    await fixtures.assertSimilar(base, noopOut, { threshold: 0 });
+  });
+
+  it('withIccProfile noop vs p3 differ when input has embedded profile', async () => {
+    const outNoop = fixtures.path('output.icc-noop.png');
+    const outP3 = fixtures.path('output.icc-p3.png');
+    await sharp(fixtures.inputPngWithProPhotoProfile)
+      .png()
+      .withIccProfile('noop')
+      .toFile(outNoop);
+    await sharp(fixtures.inputPngWithProPhotoProfile)
+      .png()
+      .withIccProfile('p3')
+      .toFile(outP3);
+    assert.ok(maxColourDistance(outNoop, outP3) > 0);
+  });
+
+  it('CMYK profile to CMYK profile with negate', (done) => {
+    sharp(fixtures.inputTiffFogra)
+      .resize(320, 240)
+      .toColourspace('cmyk')
+      .pipelineColourspace('cmyk')
+      .withIccProfile(fixtures.path('XCMYK 2017.icc'))
+      .negate()
+      .toBuffer(function (err, data, info) {
+        if (err) throw err;
+        assert.strictEqual('tiff', info.format);
+        assert.strictEqual(320, info.width);
+        assert.strictEqual(240, info.height);
+        fixtures.assertSimilar(
+          fixtures.expected('colourspace.cmyk-to-cmyk-negated.tif'),
+          data,
+          { threshold: 0 },
+          done
+        );
+      });
   });
 
   it('From sRGB with RGB16 pipeline, resize with gamma, to sRGB', function (done) {
